@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ brand.name }} — {{ cover.title }}</title>
+<style>
+@font-face { font-family: "Cormorant"; src: url("{{ fonts }}/CormorantGaramond.ttf"); font-weight: 300 700; font-style: normal; }
+@font-face { font-family: "Cormorant"; src: url("{{ fonts }}/CormorantGaramond-Italic.ttf"); font-weight: 300 700; font-style: italic; }
+@font-face { font-family: "Jakarta"; src: url("{{ fonts }}/PlusJakartaSans.ttf"); font-weight: 200 800; }
+@page { size: {{ width }} {{ height }}; margin: 0; }
+:root {
+  --page-w: {{ width }}; --page-h: {{ height }};
+  --primary: {{ brand.primary or "#3653D3" }};
+  --deep: {{ brand.deep or "#141B3C" }};
+  --ink: {{ brand.ink or "#1D2030" }};
+  --paper: {{ brand.paper or "#F8F6F1" }};
+  --stone: {{ brand.stone or "#ECE7DD" }};
+}
+{{ css | safe }}
+</style>
+</head>
+<body>
+
+{%- macro footer(n, dark=false) -%}
+<footer class="folio{{ ' folio--dark' if dark }}">
+  <span class="folio__brand">{{ brand.name }}</span>
+  <span class="folio__rule"></span>
+  <span class="folio__num">{{ n | pad }}</span>
+</footer>
+{%- endmacro -%}
+
+{%- macro grid(images) -%}
+<div class="grid n-{{ images | length }}">
+  {%- for im in images %}
+  <figure class="tile"><img src="{{ im.src }}" alt=""></figure>
+  {%- endfor %}
+</div>
+{%- endmacro -%}
+
+{% for p in pages %}
+
+{# ------------------------------------------------------------------ COVER #}
+{% if p.kind == "cover" %}
+<section class="page cover">
+  {% if cover.image %}<img class="cover__bg" src="{{ cover.image }}" alt="">{% endif %}
+  <div class="cover__shade"></div>
+  <header class="cover__top">
+    {% if c.logo %}<img class="cover__logo" src="{{ c.logo.white }}" alt="{{ brand.name }}">{% endif %}
+    {% if cover.eyebrow %}<span class="cover__eyebrow">{{ cover.eyebrow }}</span>{% endif %}
+  </header>
+  <div class="cover__body">
+    <span class="rule rule--light"></span>
+    <h1 class="cover__title">{{ cover.title }}</h1>
+    {% if cover.tagline %}<p class="cover__tagline">{{ cover.tagline }}</p>{% endif %}
+  </div>
+  <footer class="cover__bottom">
+    <span>{{ brand.name }}</span>
+    <span>{{ c.index | length }} Product Collections</span>
+    {% if brand.website %}<span>{{ brand.website }}</span>{% endif %}
+  </footer>
+</section>
+
+{# ------------------------------------------------------------------ INTRO #}
+{% elif p.kind == "intro" %}
+<section class="page intro">
+  <div class="intro__strip">
+    {% for e in c.sections if e.type == "products" %}{% for item in e["items"][:4] if item.images %}
+    <figure><img src="{{ item.images[0].src }}" alt=""></figure>
+    {% endfor %}{% endfor %}
+  </div>
+  <div class="intro__body fit">
+    <div class="intro__lead">
+      <span class="eyebrow">{{ brand.name }}</span>
+      {% for para in c.intro %}<p class="statement">{{ para }}</p>{% endfor %}
+    </div>
+    <div class="index">
+      <h2 class="index__title">{{ labels.collections or "The Collections" }}</h2>
+      <ol class="index__list">
+        {% for e in c.index %}
+        <li>
+          <span class="index__num">{{ e.number | pad }}</span>
+          <span class="index__name">{{ e.name }}{% if e.subtitle %}<em>{{ e.subtitle }}</em>{% endif %}</span>
+          <span class="index__page">{{ e.page | pad }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% if c.index_extras %}
+      <ul class="index__extras">
+        {% for e in c.index_extras %}<li><span>{{ e.name }}</span><span class="index__page">{{ e.page | pad }}</span></li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+  {{ footer(p.number) }}
+</section>
+
+{# ---------------------------------------------------------------- PRODUCT #}
+{% elif p.kind == "product" %}
+{% set prod = p.product %}
+<section class="page product{{ ' product--flip' if p.flip }}">
+  <div class="product__media m-{{ p.images | length }}">
+    {% for im in p.images %}<figure><img src="{{ im.src }}" alt=""></figure>{% endfor %}
+  </div>
+  <div class="product__text fit">
+    <span class="product__bignum">{{ prod.number | pad }}</span>
+    <span class="eyebrow">Collection {{ prod.number | pad }}</span>
+    <h2 class="product__title">{{ prod.name }}</h2>
+    {% if prod.subtitle %}<p class="product__subtitle">{{ prod.subtitle }}</p>{% endif %}
+    <span class="rule"></span>
+    {% for para in prod.paragraphs or [] %}<p class="product__desc">{{ para }}</p>{% endfor %}
+
+    {% if prod.highlights %}
+    <h3 class="label">{{ labels.highlights or prod.highlights.title }}</h3>
+    <ul class="highlights">
+      {% for h in prod.highlights["items"] %}
+      <li>{% if h.label %}<strong>{{ h.label }}</strong>{% endif %}<span>{{ h.text }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if prod.applications %}
+    <h3 class="label">{{ labels.applications or prod.applications.title }}</h3>
+    <ul class="apps">
+      {% for a in prod.applications["items"] %}<li>{{ a.text }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    {% for g in prod.other_groups %}
+    {% if g.title %}<h3 class="label">{{ g.title }}</h3>{% endif %}
+    <ul class="apps">{% for a in g["items"] %}<li>{% if a.label %}<strong>{{ a.label }}:</strong> {% endif %}{{ a.text }}</li>{% endfor %}</ul>
+    {% endfor %}
+
+    {% if prod.specs %}
+    <dl class="specstrip">
+      {% for s in prod.specs %}<div><dt>{{ s.label }}</dt><dd{% if s.value | length <= 12 %} class="nowrap"{% endif %}>{{ s.value }}</dd></div>{% endfor %}
+    </dl>
+    {% endif %}
+  </div>
+  {{ footer(p.number) }}
+</section>
+
+{# ---------------------------------------------------------------- GALLERY #}
+{% elif p.kind == "gallery" %}
+<section class="page gallery">
+  <header class="pagehead">
+    <div>
+      <span class="eyebrow">{% if p.section %}{{ p.eyebrow }}{% else %}Collection {{ p.product_number | pad }} · {{ p.title }}{% endif %}</span>
+      <h2 class="pagehead__title">{% if p.section %}{{ p.title }}{% else %}{{ p.eyebrow }}{% endif %}{% if p.continued %} <em>continued</em>{% endif %}</h2>
+    </div>
+    {% for para in p.intro or [] %}<p class="pagehead__intro">{{ para }}</p>{% endfor %}
+  </header>
+  {{ grid(p.images) }}
+  {{ footer(p.number) }}
+</section>
+
+{# ------------------------------------------------------------------ SPECS #}
+{% elif p.kind == "specs" %}
+{% set t = p.section.table %}
+<section class="page specs">
+  <header class="pagehead">
+    <div>
+      <span class="eyebrow">{{ labels.specs or "Specifications" }}</span>
+      <h2 class="pagehead__title">{{ p.section.title }}</h2>
+    </div>
+    {% for para in p.section.paragraphs or [] %}<p class="pagehead__intro">{{ para }}</p>{% endfor %}
+  </header>
+  <table class="spectable">
+    <thead><tr>{% for col in t.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in t.rows %}
+      <tr>
+        <td><span class="spectable__num">{{ loop.index | pad }}</span>{{ row[0] }}</td>
+        {% for cell in row[1:] %}<td>{{ cell }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="specs__band">
+    {% for e in c.sections if e.type == "products" %}{% for item in e["items"] if item.images %}{% if loop.index <= 8 %}
+    <figure><img src="{{ item.images[-1].src }}" alt=""><figcaption>{{ item.name }}</figcaption></figure>
+    {% endif %}{% endfor %}{% endfor %}
+  </div>
+  {{ footer(p.number) }}
+</section>
+
+{# ----------------------------------------------------------------- TRENDS #}
+{% elif p.kind == "trends" %}
+<section class="page trends">
+  <header class="pagehead">
+    <div>
+      <span class="eyebrow">{{ labels.trends or "Inspiration" }}</span>
+      <h2 class="pagehead__title">{{ p.section.title }}{% if p.continued %} <em>continued</em>{% endif %}</h2>
+    </div>
+    {% for para in p.section.paragraphs or [] %}{% if not p.continued %}<p class="pagehead__intro">{{ para }}</p>{% endif %}{% endfor %}
+  </header>
+  <div class="trends__list fit">
+    {% for t in p["items"] %}
+    <article class="trend{{ ' trend--flip' if loop.index is even }}">
+      {% if t.images %}<figure><img src="{{ t.images[0].src }}" alt=""></figure>{% endif %}
+      <div class="trend__text">
+        <span class="trend__num">Trend {{ t.number | pad }}</span>
+        <h3>{{ t.name }}</h3>
+        {% for para in t.paragraphs or [] %}<p>{{ para }}</p>{% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {{ footer(p.number) }}
+</section>
+
+{# ---------------------------------------------------------------- GENERIC #}
+{% elif p.kind == "generic" %}
+{% set s = p.section %}
+<section class="page generic">
+  <header class="pagehead">
+    <div><h2 class="pagehead__title">{{ s.title }}</h2></div>
+  </header>
+  <div class="generic__body fit">
+    {% for para in s.paragraphs or [] %}<p>{{ para }}</p>{% endfor %}
+    {% for g in s.groups or [] %}
+      {% if g.title %}<h3 class="label">{{ g.title }}</h3>{% endif %}
+      <ul class="apps">{% for a in g["items"] %}<li>{% if a.label %}<strong>{{ a.label }}:</strong> {% endif %}{{ a.text }}</li>{% endfor %}</ul>
+    {% endfor %}
+    {% if s.images %}{{ grid(s.images[:6]) }}{% endif %}
+  </div>
+  {{ footer(p.number) }}
+</section>
+
+{# ------------------------------------------------------------------- BACK #}
+{% elif p.kind == "back" %}
+<section class="page back{{ ' back--plain' if not back_image }}">
+  {% if back_image %}<figure class="back__media"><img src="{{ back_image }}" alt=""></figure>{% endif %}
+  <div class="back__body fit">
+    <span class="eyebrow eyebrow--light">{{ labels.cta or "Book a design consultation" }}</span>
+    <h2 class="back__title">{{ contact.title }}</h2>
+    <span class="rule rule--light"></span>
+    {% for para in contact.intro %}<p class="back__intro">{{ para }}</p>{% endfor %}
+    {% if contact.details %}
+    <dl class="back__details">
+      {% for d in contact.details %}<div><dt>{{ d.label }}</dt><dd>{{ d.value }}</dd></div>{% endfor %}
+    </dl>
+    {% endif %}
+    <ul class="back__collections">
+      {% for e in c.index %}<li>{{ e.name }}</li>{% endfor %}
+    </ul>
+  </div>
+  <footer class="back__foot">
+    {% if c.logo %}<img src="{{ c.logo.white }}" alt="{{ brand.name }}">{% endif %}
+    {% if brand.website %}<span>{{ brand.website }}</span>{% endif %}
+  </footer>
+</section>
+{% endif %}
+{% endfor %}
+
+<script>
+(async () => {
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(img => img.complete ? null :
+    new Promise(r => { img.onload = img.onerror = r; })));
+  const overflow = [];
+  document.querySelectorAll(".page").forEach((page, i) => {
+    const boxes = [...page.querySelectorAll(".fit")];
+    const over = () => boxes.some(b => b.scrollHeight > b.clientHeight + 1);
+    let scale = 1;
+    while (over() && scale > 0.78) {
+      scale -= 0.02;
+      page.style.setProperty("--scale", scale.toFixed(2));
+    }
+    if (over()) overflow.push(i + 1);
+  });
+  window.__overflowPages = overflow;
+  window.__fitDone = true;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+# Brochure settings. Everything here is optional - the raw PDF supplies the content,
+# this file only controls branding and fills gaps the raw file can't provide.
+
+# Raw PDF to read. "auto" = the newest PDF in the /source folder.
+source: auto
+
+output_name: Nesting-Trendz-Brochure
+page_size: letter        # letter | a4
+edition_year:            # blank = current year (shown on the cover as "Lookbook 2026")
+
+brand:
+  name: Nesting Trendz
+  website: ""            # e.g. www.nestingtrendz.com (shown on cover + footer when set)
+  primary: "#3653D3"     # logo blue
+  deep: "#141B3C"        # dark navy used on cover / back cover
+  ink: "#1D2030"
+  paper: "#F8F6F1"       # warm ivory page background
+  stone: "#ECE7DD"
+
+cover:
+  title:                 # blank = title from the raw file
+  eyebrow:               # blank = "Lookbook <year>"
+  tagline: Curated surfaces for sophisticated contemporary spaces
+  # Cover photo. Use an image reference or a file path relative to the project root:
+  #   trends/1 .. trends/3            first photo of each trend
+  #   gallery/1 ..                    completed-project photos
+  #   products/<slug>/1 ..            product photos, e.g. products/designer-louvres/2
+  #   brochure/images/my-cover.jpg    any custom image
+  image: trends/3
+
+back_cover:
+  image: trends/1        # same reference format as the cover; blank = no photo
+
+layout:
+  product_page_images: 3   # photos on each product page; extras go to a gallery page
+
+labels:
+  highlights: Key Highlights
+  applications: Ideal Applications
+  specs: Specifications
+  product_gallery: Finishes & Profiles
+  projects: Portfolio
+  trends: Inspiration
+  collections: The Collections
+  cta: Book a design consultation
+
+# Contact details for the back cover. These override the raw file, whose
+# contact lines are Google Docs placeholders ("Person", "Place", ...).
+# Empty values are left off the brochure.
+contact:
+  Lead Design Specialist: ""
+  Showroom & Material Gallery: ""
+  Consultation Event: ""
+  Project Folder Reference: ""
+  Phone: ""
+  Email: ""
