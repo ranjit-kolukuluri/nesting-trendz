@@ -31,8 +31,8 @@
 
 {%- macro photo(im, class="", cap=true) -%}
 <figure{% if class %} class="{{ class }}"{% endif %}>
-  <img src="{{ im.src }}" alt="{{ im.name or '' }}">
   {% if cap and im.name %}<figcaption class="cap">{{ im.name }}</figcaption>{% endif %}
+  <img src="{{ im.src }}" alt="{{ im.name or '' }}">
 </figure>
 {%- endmacro -%}
 

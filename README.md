@@ -31,7 +31,7 @@ The converter reads the document structure, so keep these conventions:
 | Sub-headings containing *Highlights* / *Applications* | Highlight list / application tags |
 | Bullets written `Label: description` | Bold label + description |
 | Photos placed after a product heading | That product's photos (first is the hero) |
-| A photo's alt text (its name and description) | The caption on that photo |
+| A photo's alt text (the name written above that photo) | The product name printed above that photo |
 | Heading with *Specification* / *Matrix* + a table | Spec page; rows also appear on each product page |
 | Heading with *Projects* / *Customers* | Portfolio photo pages |
 | Heading with *Trend* / *Inspiration*, items `Trend 1: Name` | Inspiration page |
