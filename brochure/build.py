@@ -85,7 +85,7 @@ def match_spec_rows(products: list[dict], spec: dict | None) -> None:
             warn(f"No spec-table row matched product '{product['name']}'")
 
 
-def find_image(content: dict, ref: str | None) -> str | None:
+def find_image(content: dict, ref: str | None) -> dict | None:
     """Resolve refs like 'trends/3', 'gallery/2', 'products/designer-louvres/1' or a file path."""
     if not ref or ref == "auto":
         return None
@@ -102,11 +102,11 @@ def find_image(content: dict, ref: str | None) -> str | None:
                 imgs = [im for i in section.get("items", []) for im in i.get("images", [])[:1]]
             else:
                 imgs = section.get("images", [])
-        return imgs[index]["src"]
+        return imgs[index]
     except (StopIteration, ValueError, IndexError, KeyError):
         path = ROOT / ref
         if path.exists():
-            return path.resolve().as_uri()
+            return {"src": path.resolve().as_uri(), "w": 0, "h": 0, "name": ""}
         warn(f"Image reference '{ref}' in config.yaml not found - ignored")
         return None
 
@@ -162,6 +162,15 @@ def balanced(items: list, per_page: int) -> list[list]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
+def warn_unnamed(images: list[dict], where: str) -> None:
+    missing = sum(1 for im in images if not im.get("name"))
+    if missing:
+        if missing == 1:
+            warn(f"1 photo in '{where}' has no image name or description")
+        else:
+            warn(f"{missing} photos in '{where}' have no image name or description")
+
+
 def plan_pages(content: dict, cfg: dict) -> list[dict]:
     labels = cfg.get("labels", {})
     sections = content["sections"]
@@ -177,6 +186,8 @@ def plan_pages(content: dict, cfg: dict) -> list[dict]:
     for p in products:
         if not p.get("images"):
             warn(f"Product '{p['name']}' has no images")
+        else:
+            warn_unnamed(p.get("images", []), p["name"])
         groups = p.get("groups", [])
         p["highlights"] = next((g for g in groups if g["kind"] == "highlights"), None)
         p["applications"] = next((g for g in groups if g["kind"] == "applications"), None)
@@ -205,6 +216,7 @@ def plan_pages(content: dict, cfg: dict) -> list[dict]:
         if t == "specs" and s.get("table"):
             pages.append({"kind": "specs", "section": s})
         elif t == "gallery":
+            warn_unnamed(s.get("images", []), s["title"])
             for n, group in enumerate(chunk(s.get("images", []), 6, 9)):
                 pages.append({"kind": "gallery", "title": s["title"], "section": s,
                               "eyebrow": labels.get("projects", "Portfolio"),
@@ -212,6 +224,7 @@ def plan_pages(content: dict, cfg: dict) -> list[dict]:
                               "images": group, "continued": n > 0})
         elif t == "trends":
             items = s.get("items", [])
+            warn_unnamed([im for i in items for im in i.get("images", [])], s["title"])
             for n in range(0, max(len(items), 1), 3):
                 pages.append({"kind": "trends", "section": s, "items": items[n:n + 3],
                               "continued": n > 0})
@@ -257,7 +270,7 @@ def render_html(content: dict, pages: list[dict], cfg: dict, out_dir: Path) -> P
     if not cover_img:
         candidates = [im for im in all_images(content) if im["h"] >= im["w"]]
         candidates = candidates or all_images(content)
-        cover_img = max(candidates, key=lambda im: im["w"] * im["h"])["src"] if candidates else None
+        cover_img = max(candidates, key=lambda im: im["w"] * im["h"]) if candidates else None
 
     contact_sec = next((s for s in content["sections"] if s["type"] == "contact"), None)
     contact = {

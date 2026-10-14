@@ -29,11 +29,16 @@
 </footer>
 {%- endmacro -%}
 
+{%- macro photo(im, class="", cap=true) -%}
+<figure{% if class %} class="{{ class }}"{% endif %}>
+  <img src="{{ im.src }}" alt="{{ im.name or '' }}">
+  {% if cap and im.name %}<figcaption class="cap">{{ im.name }}</figcaption>{% endif %}
+</figure>
+{%- endmacro -%}
+
 {%- macro grid(images) -%}
 <div class="grid n-{{ images | length }}">
-  {%- for im in images %}
-  <figure class="tile"><img src="{{ im.src }}" alt=""></figure>
-  {%- endfor %}
+  {%- for im in images %}{{ photo(im, "tile") }}{% endfor %}
 </div>
 {%- endmacro -%}
 
@@ -42,7 +47,7 @@
 {# ------------------------------------------------------------------ COVER #}
 {% if p.kind == "cover" %}
 <section class="page cover">
-  {% if cover.image %}<img class="cover__bg" src="{{ cover.image }}" alt="">{% endif %}
+  {% if cover.image %}<img class="cover__bg" src="{{ cover.image.src }}" alt="{{ cover.image.name or '' }}">{% endif %}
   <div class="cover__shade"></div>
   <header class="cover__top">
     {% if c.logo %}<img class="cover__logo" src="{{ c.logo.white }}" alt="{{ brand.name }}">{% endif %}
@@ -65,7 +70,7 @@
 <section class="page intro">
   <div class="intro__strip">
     {% for e in c.sections if e.type == "products" %}{% for item in e["items"][:4] if item.images %}
-    <figure><img src="{{ item.images[0].src }}" alt=""></figure>
+    {{ photo(item.images[0], cap=false) }}
     {% endfor %}{% endfor %}
   </div>
   <div class="intro__body fit">
@@ -99,7 +104,7 @@
 {% set prod = p.product %}
 <section class="page product{{ ' product--flip' if p.flip }}">
   <div class="product__media m-{{ p.images | length }}">
-    {% for im in p.images %}<figure><img src="{{ im.src }}" alt=""></figure>{% endfor %}
+    {% for im in p.images %}{{ photo(im) }}{% endfor %}
   </div>
   <div class="product__text fit">
     <span class="product__bignum">{{ prod.number | pad }}</span>
@@ -177,7 +182,7 @@
   </table>
   <div class="specs__band">
     {% for e in c.sections if e.type == "products" %}{% for item in e["items"] if item.images %}{% if loop.index <= 8 %}
-    <figure><img src="{{ item.images[-1].src }}" alt=""><figcaption>{{ item.name }}</figcaption></figure>
+    <figure><img src="{{ item.images[-1].src }}" alt="{{ item.images[-1].name or item.name }}"><figcaption>{{ item.name }}</figcaption></figure>
     {% endif %}{% endfor %}{% endfor %}
   </div>
   {{ footer(p.number) }}
@@ -196,7 +201,7 @@
   <div class="trends__list fit">
     {% for t in p["items"] %}
     <article class="trend{{ ' trend--flip' if loop.index is even }}">
-      {% if t.images %}<figure><img src="{{ t.images[0].src }}" alt=""></figure>{% endif %}
+      {% if t.images %}{{ photo(t.images[0]) }}{% endif %}
       <div class="trend__text">
         <span class="trend__num">Trend {{ t.number | pad }}</span>
         <h3>{{ t.name }}</h3>
@@ -229,7 +234,7 @@
 {# ------------------------------------------------------------------- BACK #}
 {% elif p.kind == "back" %}
 <section class="page back{{ ' back--plain' if not back_image }}">
-  {% if back_image %}<figure class="back__media"><img src="{{ back_image }}" alt=""></figure>{% endif %}
+  {% if back_image %}<figure class="back__media"><img src="{{ back_image.src }}" alt="{{ back_image.name or '' }}"></figure>{% endif %}
   <div class="back__body fit">
     <span class="eyebrow eyebrow--light">{{ labels.cta or "Book a design consultation" }}</span>
     <h2 class="back__title">{{ contact.title }}</h2>

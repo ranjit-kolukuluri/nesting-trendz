@@ -1,9 +1,10 @@
 """Parse the raw product PDF into structured content (content.json + image assets).
 
 The raw file is authored as a simple document: serif headings, sans-serif body
-text, bullet lists, a spec table and photos. This module walks the document in
-reading order and rebuilds that structure so the brochure can be re-rendered
-whenever the raw file changes.
+text, bullet lists, a spec table and photos. Photo names and descriptions are
+the images' alt text. This module walks the document in reading order and
+rebuilds that structure so the brochure can be re-rendered whenever the raw
+file changes.
 """
 from __future__ import annotations
 
@@ -28,6 +29,12 @@ SUBHEAD_RE = re.compile(
 )
 NUMBERED_ITEM_RE = re.compile(r"^(\d{1,2})[.)]\s+(.+)$")
 TREND_ITEM_RE = re.compile(r"^(trend|look|style|idea)\s*(\d{1,2})\s*[:.\-–]\s*(.+)$", re.I)
+# A figure's marked-content id, then the XObject it draws. Google Docs writes
+# the photo name / description into that figure's /Alt entry.
+MCID_IMAGE_RE = re.compile(
+    rb"/Figure\s*<<[^>]*?/MCID\s+(\d+)[^>]*>>\s*BDC\s*/([^\s/]+)\s+Do",
+    re.S,
+)
 
 
 def clean(text: str) -> str:
@@ -118,7 +125,46 @@ def find_tables(page: pymupdf.Page) -> list[El]:
     return found
 
 
-def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
+def figure_labels(doc: pymupdf.Document) -> dict[int, dict[int, str]]:
+    """Page object xref -> {marked-content id: photo name or description}.
+
+    The raw document (a Google Docs PDF) keeps each photo's name and
+    description as the alt text of a /Figure structure element.
+    """
+    labels: dict[int, dict[int, str]] = {}
+    for xref in range(1, doc.xref_length()):
+        try:
+            kind, value = doc.xref_get_key(xref, "S")
+        except Exception:
+            continue
+        if kind != "name" or value != "/Figure":
+            continue
+        alt_kind, alt = doc.xref_get_key(xref, "Alt")
+        if alt_kind != "string" or not clean(alt):
+            continue
+        pg_kind, pg = doc.xref_get_key(xref, "Pg")
+        k_kind, mcid = doc.xref_get_key(xref, "K")
+        if pg_kind != "xref" or k_kind != "int":
+            continue
+        page_xref = int(pg.split()[0])
+        labels.setdefault(page_xref, {})[int(mcid)] = clean(alt)
+    return labels
+
+
+def image_names(page: pymupdf.Page, labels: dict[int, dict[int, str]]) -> dict[str, str]:
+    """XObject resource name -> alt text, for the figures drawn on this page."""
+    page_labels = labels.get(page.xref)
+    if not page_labels:
+        return {}
+    names: dict[str, str] = {}
+    for mcid, xname in MCID_IMAGE_RE.findall(page.read_contents()):
+        alt = page_labels.get(int(mcid))
+        if alt:
+            names[xname.decode("latin1")] = alt
+    return names
+
+
+def page_elements(doc, page, page_no, body_font, assets_dir, seen, names) -> list[El]:
     els: list[El] = []
     tables = find_tables(page)
     els.extend(tables)
@@ -148,6 +194,7 @@ def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
 
     for img in page.get_images(full=True):
         xref, smask, w, h = img[0], img[1], img[2], img[3]
+        xname = str(img[7])
         if min(w, h) < MIN_IMAGE_PX:
             continue
         rects = page.get_image_rects(xref)
@@ -158,7 +205,7 @@ def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
             continue
         top = max(rects[0].y0, 0)
         els.append(El("image", top, rects[0].x0, page=page_no,
-                      data={"src": path, "w": w, "h": h}))
+                      data={"src": path, "w": w, "h": h, "name": names.get(xname, "")}))
 
     # Merge lines that share a baseline (e.g. a bullet label and its value chip).
     els.sort(key=lambda e: (round(e.y / 4), e.x))
@@ -350,10 +397,12 @@ def extract(pdf_path: Path, out_dir: Path) -> dict:
 
     doc = pymupdf.open(pdf_path)
     body_font = detect_fonts(doc)
+    labels = figure_labels(doc)
     seen: dict = {}
     stream: list[El] = []
     for i, page in enumerate(doc):
-        stream.extend(page_elements(doc, page, i + 1, body_font, assets, seen))
+        names = image_names(page, labels)
+        stream.extend(page_elements(doc, page, i + 1, body_font, assets, seen, names))
 
     content = build_structure(stream)
     if content["logo"]:
