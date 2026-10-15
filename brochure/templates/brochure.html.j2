@@ -29,6 +29,66 @@
 </footer>
 {%- endmacro -%}
 
+{%- macro caption_tag(cap, cls) -%}
+<figcaption class="cap cap--{{ cls }}">
+  {% if cap.tone %}<span class="cap__tone">{{ cap.tone }}</span>{% endif %}
+  <span class="cap__name">{{ cap.name }}</span>
+</figcaption>
+{%- endmacro -%}
+
+{%- macro product_title(prod) -%}
+<div class="titleblock">
+  <span class="product__bignum">{{ prod.number | pad }}</span>
+  <span class="eyebrow">Collection {{ prod.number | pad }}</span>
+  <h2 class="product__title">{{ prod.name }}</h2>
+  {% if prod.subtitle %}<p class="product__subtitle">{{ prod.subtitle }}</p>{% endif %}
+  <span class="rule"></span>
+</div>
+{%- endmacro -%}
+
+{%- macro details(prod) -%}
+{% if prod.highlights %}
+<h3 class="label">{{ labels.highlights or prod.highlights.title }}</h3>
+<ul class="highlights">
+  {% for h in prod.highlights["items"] %}
+  <li{% if not h.text %} class="highlights__solo"{% endif %}>{% if h.label %}<strong>{{ h.label }}</strong>{% endif %}{% if h.text %}<span>{{ h.text }}</span>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if prod.applications %}
+<h3 class="label">{{ labels.applications or prod.applications.title }}</h3>
+<ul class="apps">
+  {% for a in prod.applications["items"] %}<li>{{ a.text }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% for g in prod.other_groups %}
+{% if g.title %}<h3 class="label">{{ g.title }}</h3>{% endif %}
+<ul class="apps">{% for a in g["items"] %}<li>{% if a.label %}<strong>{{ a.label }}:</strong> {% endif %}{{ a.text }}</li>{% endfor %}</ul>
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro specstrip(prod) -%}
+{% set cells = [] %}
+{% for s in prod.sizes or [] %}{% set _ = cells.append({"label": (s.label ~ " size") if s.label else "Panel Size", "value": s.value}) %}{% endfor %}
+{% for s in prod.specs or [] %}{% set _ = cells.append(s) %}{% endfor %}
+{% if cells %}
+<dl class="specstrip{{ ' specstrip--stack' if cells | length > 3 }}">
+  {% for s in cells %}<div><dt>{{ s.label }}</dt><dd{% if s.value | length <= 12 %} class="nowrap"{% endif %}>{{ s.value }}</dd></div>{% endfor %}
+</dl>
+{% endif %}
+{%- endmacro -%}
+
+{%- macro finish_grid(images, prod) -%}
+<div class="finishes f-{{ images | length }}">
+  {%- for im in images %}
+  <figure class="finish">
+    <div class="finish__img"><img src="{{ im.src }}" alt="{{ im.caption.text if im.caption else prod.name }}"></div>
+    {% if im.caption %}{{ caption_tag(im.caption, "below") }}{% else %}<figcaption class="cap cap--below"><span class="cap__name">{{ prod.name }}</span></figcaption>{% endif %}
+  </figure>
+  {%- endfor %}
+</div>
+{%- endmacro -%}
+
 {%- macro grid(images) -%}
 <div class="grid n-{{ images | length }}">
   {%- for im in images %}
@@ -80,6 +140,7 @@
         <li>
           <span class="index__num">{{ e.number | pad }}</span>
           <span class="index__name">{{ e.name }}{% if e.subtitle %}<em>{{ e.subtitle }}</em>{% endif %}</span>
+          {% if e.finishes > 1 %}<span class="index__meta">{{ e.finishes }} finishes</span>{% endif %}
           <span class="index__page">{{ e.page | pad }}</span>
         </li>
         {% endfor %}
@@ -95,46 +156,93 @@
 </section>
 
 {# ---------------------------------------------------------------- PRODUCT #}
-{% elif p.kind == "product" %}
+{% elif p.kind in ("product", "catalog") %}
 {% set prod = p.product %}
+{% if p.kind == "product" %}
 <section class="page product{{ ' product--flip' if p.flip }}">
   <div class="product__media m-{{ p.images | length }}">
-    {% for im in p.images %}<figure><img src="{{ im.src }}" alt=""></figure>{% endfor %}
-  </div>
-  <div class="product__text fit">
-    <span class="product__bignum">{{ prod.number | pad }}</span>
-    <span class="eyebrow">Collection {{ prod.number | pad }}</span>
-    <h2 class="product__title">{{ prod.name }}</h2>
-    {% if prod.subtitle %}<p class="product__subtitle">{{ prod.subtitle }}</p>{% endif %}
-    <span class="rule"></span>
-    {% for para in prod.paragraphs or [] %}<p class="product__desc">{{ para }}</p>{% endfor %}
-
-    {% if prod.highlights %}
-    <h3 class="label">{{ labels.highlights or prod.highlights.title }}</h3>
-    <ul class="highlights">
-      {% for h in prod.highlights["items"] %}
-      <li>{% if h.label %}<strong>{{ h.label }}</strong>{% endif %}<span>{{ h.text }}</span></li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-
-    {% if prod.applications %}
-    <h3 class="label">{{ labels.applications or prod.applications.title }}</h3>
-    <ul class="apps">
-      {% for a in prod.applications["items"] %}<li>{{ a.text }}</li>{% endfor %}
-    </ul>
-    {% endif %}
-
-    {% for g in prod.other_groups %}
-    {% if g.title %}<h3 class="label">{{ g.title }}</h3>{% endif %}
-    <ul class="apps">{% for a in g["items"] %}<li>{% if a.label %}<strong>{{ a.label }}:</strong> {% endif %}{{ a.text }}</li>{% endfor %}</ul>
+    {% for im in p.images %}
+    <figure>
+      <img src="{{ im.src }}" alt="{{ im.caption.text if im.caption else prod.name }}">
+      {% if im.caption %}{{ caption_tag(im.caption, "overlay") }}{% endif %}
+    </figure>
     {% endfor %}
-
-    {% if prod.specs %}
-    <dl class="specstrip">
-      {% for s in prod.specs %}<div><dt>{{ s.label }}</dt><dd{% if s.value | length <= 12 %} class="nowrap"{% endif %}>{{ s.value }}</dd></div>{% endfor %}
-    </dl>
+  </div>
+  <div class="product__text fit" data-grow="1.45">
+    {{ product_title(prod) }}
+    {% for para in prod.paragraphs or [] %}<p class="product__desc">{{ para }}</p>{% endfor %}
+    {{ details(prod) }}
+    {% if prod.finishes %}
+    <h3 class="label">{{ labels.finishes or "Available Finishes" }}</h3>
+    <ul class="finishlist">
+      {% for f in prod.finishes %}<li><strong>{{ f.name }}</strong>{% if f.tone %}<span>{{ f.tone }}</span>{% endif %}</li>{% endfor %}
+    </ul>
     {% endif %}
+    {{ specstrip(prod) }}
+  </div>
+  {{ footer(p.number) }}
+</section>
+{% else %}
+<section class="page catalog">
+  <header class="catalog__head fit">
+    <div class="catalog__intro">
+      {{ product_title(prod) }}
+      {% for para in prod.paragraphs or [] %}<p class="product__desc">{{ para }}</p>{% endfor %}
+    </div>
+    <div class="catalog__details">
+      {{ specstrip(prod) }}
+      {{ details(prod) }}
+    </div>
+  </header>
+  <div class="catalog__bar">
+    <span class="label">{{ labels.finishes or "Available Finishes" }}</span>
+    <span class="catalog__count">{{ prod.images | length }} {{ "finish" if prod.images | length == 1 else "finishes" }}</span>
+  </div>
+  {{ finish_grid(p.images, prod) }}
+  {{ footer(p.number) }}
+</section>
+{% endif %}
+
+{# --------------------------------------------------------------- FINISHES #}
+{% elif p.kind == "finishes" %}
+{% set prod = p.product %}
+<section class="page catalog catalog--more">
+  <header class="pagehead">
+    <div>
+      <span class="eyebrow">Collection {{ prod.number | pad }} · {{ prod.name }}</span>
+      <h2 class="pagehead__title">{{ p.eyebrow }} <em>continued</em></h2>
+    </div>
+  </header>
+  {{ finish_grid(p.images, prod) }}
+  {{ footer(p.number) }}
+</section>
+
+{# ------------------------------------------------------------------ GLANCE #}
+{% elif p.kind == "glance" %}
+<section class="page glance">
+  <header class="pagehead">
+    <div>
+      <span class="eyebrow">{{ labels.specs or "Specifications" }}</span>
+      <h2 class="pagehead__title">{{ labels.glance or "Collections at a Glance" }}</h2>
+    </div>
+  </header>
+  <div class="glance__body fit">
+    <table class="spectable glance__table">
+      <thead><tr><th>Collection</th><th>Panel Size</th><th>{{ labels.finishes or "Available Finishes" }}</th></tr></thead>
+      <tbody>
+        {% for prod in p.products %}
+        <tr>
+          <td><span class="spectable__num">{{ prod.number | pad }}</span>{{ prod.name }}{% if prod.subtitle %}<em>{{ prod.subtitle }}</em>{% endif %}</td>
+          <td class="glance__size">
+            {% for s in prod.sizes or [] %}<div>{% if s.label %}<small>{{ s.label }}</small>{% endif %}{{ s.value }}</div>{% else %}—{% endfor %}
+          </td>
+          <td><div class="glance__finishes">
+            {% if prod.finishes %}{% for f in prod.finishes %}<span>{{ f.text }}</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}
+          </div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
   {{ footer(p.number) }}
 </section>
@@ -262,6 +370,17 @@
     const boxes = [...page.querySelectorAll(".fit")];
     const over = () => boxes.some(b => b.scrollHeight > b.clientHeight + 1);
     let scale = 1;
+    while (over() && scale > 0.78) {
+      scale -= 0.02;
+      page.style.setProperty("--scale", scale.toFixed(2));
+    }
+    // Sparse pages: enlarge the text while it still fits, leaving breathing room.
+    const grow = Math.min(...boxes.map(b => parseFloat(b.dataset.grow || "1")));
+    const roomy = () => boxes.every(b => b.scrollHeight <= b.clientHeight * 0.82);
+    while (boxes.length && scale < grow && roomy()) {
+      scale += 0.03;
+      page.style.setProperty("--scale", scale.toFixed(2));
+    }
     while (over() && scale > 0.78) {
       scale -= 0.02;
       page.style.setProperty("--scale", scale.toFixed(2));

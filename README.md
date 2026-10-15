@@ -13,8 +13,11 @@ Turns the raw product document (`source/*.pdf`) into a designed marketing brochu
    .\build-brochure.ps1
    ```
 
-4. Read the **Review** list printed at the end (missing images, unmatched specs,
-   placeholder contact details, pages that were too long) and check the PDF.
+4. Read the **Review** list printed at the end (missing images, finish names that didn't
+   make it into the brochure, captions without a photo, placeholder contact details,
+   pages that were too long) and check the PDF.
+
+Older raw files are kept in `source/archive/`.
 
 First time on a new machine: `.\build-brochure.ps1 -Setup` (installs Python packages + Chromium).
 
@@ -30,6 +33,9 @@ The converter reads the document structure, so keep these conventions:
 | Sub-headings containing *Highlights* / *Applications* | Highlight list / application tags |
 | Bullets written `Label: description` | Bold label + description |
 | Photos placed after a product heading | That product's photos (first is the hero) |
+| Small heading right above a photo, e.g. `Black: Solstice 001` | Finish name shown with that photo (colour / name) |
+| `Size: 8’ height x 4’width` (or `Size: Stone Sheet: …`) | Panel size on the product page and the glance table |
+| `Feather Panel:` heading, photo, then `Size: …` | A named variant with its own size |
 | Heading with *Specification* / *Matrix* + a table | Spec page; rows also appear on each product page |
 | Heading with *Projects* / *Customers* | Portfolio photo pages |
 | Heading with *Trend* / *Inspiration*, items `Trend 1: Name` | Inspiration page |

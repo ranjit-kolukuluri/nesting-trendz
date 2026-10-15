@@ -26,19 +26,34 @@ cover:
   #   gallery/1 ..                    completed-project photos
   #   products/<slug>/1 ..            product photos, e.g. products/designer-louvres/2
   #   brochure/images/my-cover.jpg    any custom image
-  image: trends/3
+  image: products/mdf-wall-designs/1
 
 back_cover:
-  image: trends/1        # same reference format as the cover; blank = no photo
+  image: products/chipped-onyx/1   # same reference format as the cover; blank = no photo
+  # Used only when the raw file has no ordering/contact section of its own.
+  title: Ordering & Project Consultations
+  intro: >-
+    To request product samples or a personalized architectural consultation for your
+    upcoming project, please connect with our design team.
+
+# Used only when the raw file has no intro paragraph under its title.
+intro: >-
+  Nesting Trendz presents a curated range of high-performance architectural materials,
+  decorative panels, and surface solutions engineered for sophisticated contemporary
+  spaces. From seamless marble alternatives to hand-finished organic textures, our
+  collections combine modern engineering with natural aesthetics.
 
 layout:
-  product_page_images: 3   # photos on each product page; extras go to a gallery page
+  split_layout_max_images: 2   # up to this many photos: photo column beside the text
+  finishes_first_page: 6       # more photos: captioned finish grid, this many on the first page
+  finishes_per_page: 9         # ...and up to this many on each continuation page
 
 labels:
   highlights: Key Highlights
   applications: Ideal Applications
   specs: Specifications
-  product_gallery: Finishes & Profiles
+  finishes: Available Finishes
+  glance: Collections at a Glance
   projects: Portfolio
   trends: Inspiration
   collections: The Collections
@@ -50,7 +65,5 @@ labels:
 contact:
   Lead Design Specialist: ""
   Showroom & Material Gallery: ""
-  Consultation Event: ""
-  Project Folder Reference: ""
   Phone: ""
   Email: ""

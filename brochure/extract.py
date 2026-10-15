@@ -27,6 +27,7 @@ SUBHEAD_RE = re.compile(
     r"(highlights?|applications?|features?|benefits?|specifications?|uses?)\s*:?\s*$", re.I
 )
 NUMBERED_ITEM_RE = re.compile(r"^(\d{1,2})[.)]\s+(.+)$")
+SIZE_RE = re.compile(r"^(size|dimensions?|panel size)\s*:\s*(.+)$", re.I)
 TREND_ITEM_RE = re.compile(r"^(trend|look|style|idea)\s*(\d{1,2})\s*[:.\-–]\s*(.+)$", re.I)
 
 
@@ -49,7 +50,7 @@ def section_type(title: str) -> str:
         return "specs"
     if re.search(r"order|contact|consult|enquir|inquir|get in touch", t):
         return "contact"
-    if re.search(r"project|customer|portfolio|installation|gallery", t):
+    if re.search(r"project|customer|portfolio|installation|gallery|transformed|spaces|showcase", t):
         return "gallery"
     if re.search(r"trend|inspiration|lookbook|mood", t):
         return "trends"
@@ -82,13 +83,16 @@ class El:
 # Stream building
 # --------------------------------------------------------------------------- #
 
-def detect_fonts(doc: pymupdf.Document) -> str:
+def detect_heading_font(doc: pymupdf.Document) -> str:
+    """The font family used for the largest text is the heading font."""
+    spans = [(s["size"], font_family(s["font"]), len(s["text"].strip()))
+             for page in doc for block in page.get_text("dict")["blocks"]
+             for line in block.get("lines", []) for s in line["spans"] if s["text"].strip()]
+    top = max(size for size, _, _ in spans)
     counts: Counter[str] = Counter()
-    for page in doc:
-        for block in page.get_text("dict")["blocks"]:
-            for line in block.get("lines", []):
-                for span in line["spans"]:
-                    counts[font_family(span["font"])] += len(span["text"].strip())
+    for size, family, n in spans:
+        if size >= top * 0.9:
+            counts[family] += n
     return counts.most_common(1)[0][0]
 
 
@@ -118,7 +122,7 @@ def find_tables(page: pymupdf.Page) -> list[El]:
     return found
 
 
-def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
+def page_elements(doc, page, page_no, heading_font, assets_dir, seen) -> list[El]:
     els: list[El] = []
     tables = find_tables(page)
     els.extend(tables)
@@ -143,7 +147,7 @@ def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
                 weighted[font_family(s["font"])] += len(s["text"].strip())
             dominant = weighted.most_common(1)[0][0]
             size = max(s["size"] for s in spans if s["text"].strip())
-            kind = "heading" if dominant != body_font else "para"
+            kind = "heading" if dominant == heading_font else "para"
             els.append(El(kind, y0, x0, text, size, page_no))
 
     for img in page.get_images(full=True):
@@ -156,13 +160,43 @@ def page_elements(doc, page, page_no, body_font, assets_dir, seen) -> list[El]:
         path = save_image(doc, xref, smask, assets_dir, seen)
         if path is None:
             continue
-        top = max(rects[0].y0, 0)
-        els.append(El("image", top, rects[0].x0, page=page_no,
+        # Photos are often cropped by table cells, so the visible part sits around the
+        # middle of the placement rect; ordering by its centre keeps captions above photos.
+        visible = rects[0] & page.rect
+        centre = (visible.y0 + visible.y1) / 2
+        els.append(El("image", centre, rects[0].x0, page=page_no,
                       data={"src": path, "w": w, "h": h}))
 
     # Merge lines that share a baseline (e.g. a bullet label and its value chip).
     els.sort(key=lambda e: (round(e.y / 4), e.x))
     return els
+
+
+def trim_dark_borders(data: bytes, ext: str) -> tuple[bytes, str]:
+    """Remove solid black bars baked into a photo's edges (common in phone screenshots)."""
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:
+        return data, ext
+    gray = img.convert("L")
+    bbox = gray.point(lambda v: 255 if v > 22 else 0).getbbox()
+    if not bbox:
+        return data, ext
+    w, h = img.size
+    left, top, right, bottom = bbox
+    trimmed = max(left / w, top / h, (w - right) / w, (h - bottom) / h)
+    kept = (right - left) * (bottom - top) / (w * h)
+    if trimmed < 0.03 or kept < 0.5:
+        return data, ext
+    out = io.BytesIO()
+    cropped = img.crop(bbox)
+    if ext in ("jpeg", "jpg"):
+        cropped.convert("RGB").save(out, "JPEG", quality=92)
+    else:
+        cropped.save(out, "PNG")
+        ext = "png"
+    return out.getvalue(), ext
 
 
 def save_image(doc, xref, smask, assets_dir: Path, seen: dict) -> str | None:
@@ -176,6 +210,7 @@ def save_image(doc, xref, smask, assets_dir: Path, seen: dict) -> str | None:
         data, ext = info["image"], info["ext"]
         if ext not in ("jpeg", "jpg", "png", "webp"):
             data, ext = pymupdf.Pixmap(doc, xref).tobytes("png"), "png"
+    data, ext = trim_dark_borders(data, ext)
     digest = hashlib.sha1(data).hexdigest()[:10]
     if digest in seen.values():
         seen[xref] = digest
@@ -204,14 +239,57 @@ def sentence(text: str) -> str:
     return text
 
 
+def normalize_size(value: str) -> str:
+    v = clean(value)
+    v = re.sub(r"(\d+)[’'′]\.(\d+)(?:’’|''|”|\"|″)", r"\1.\2’", v)  # 9’.5’’ -> 9.5’
+    v = v.replace("’’", "”").replace("''", "”")
+    v = re.sub(r"\s+[xX×]\s+", " × ", v)
+    v = re.sub(r"([’”'\"′″])(?=[A-Za-z])", r"\1 ", v)
+    return v
+
+
+def parse_caption(text: str) -> dict:
+    text = clean(text).rstrip(":").strip()
+    m = re.match(r"^(.+?)\s*(?::|–|—|\s-\s)\s*(.+)$", text)
+    if m:
+        return {"text": text, "tone": sentence(m.group(1)), "name": m.group(2)}
+    return {"text": text, "tone": "", "name": text}
+
+
 def build_structure(stream: list[El]) -> dict:
-    doc: dict = {"title": None, "intro": [], "logo": None, "sections": []}
+    doc: dict = {"title": None, "intro": [], "logo": None, "sections": [], "warnings": []}
     section = None
     item = None
     group = None
     para_buf: list[str] = []
     last_bullet = None
     last_kind = None
+    pending_caption: str | None = None
+    variant: str | None = None
+
+    # Section headings are clearly larger than product headings ("1. Name"); anything
+    # smaller than a product heading inside a product is a caption for the next photo.
+    item_sizes = sorted(e.size for e in stream
+                        if e.kind == "heading" and NUMBERED_ITEM_RE.match(e.text))
+    item_size = item_sizes[len(item_sizes) // 2] if item_sizes else 18.0
+    major_size = item_size * 1.15
+
+    def add_size(text: str) -> None:
+        nonlocal variant
+        if item is None:
+            return
+        value = SIZE_RE.match(text).group(2)
+        m = re.match(r"^([A-Za-z][A-Za-z &]+?)\s*:\s*(.+)$", value)
+        label, value = (m.group(1), m.group(2)) if m else (variant, value)
+        item.setdefault("sizes", []).append(
+            {"label": clean(label) if label else None, "value": normalize_size(value)})
+        variant = None
+
+    def drop_pending():
+        nonlocal pending_caption
+        if pending_caption:
+            doc["warnings"].append(f"Caption '{pending_caption}' has no photo after it")
+        pending_caption = None
 
     def target():
         return item if item is not None else (section if section is not None else doc)
@@ -237,22 +315,41 @@ def build_structure(stream: list[El]) -> dict:
         if el.kind != "para":
             flush_para()
 
+        if el.kind in ("heading", "para") and SIZE_RE.match(el.text):
+            flush_para()
+            last_bullet = None
+            add_size(el.text)
+            last_kind = el.kind
+            continue
+
         if el.kind == "heading":
             last_bullet = None
             title = el.text.rstrip(":").strip()
-            if SUBHEAD_RE.search(title) and (section is not None):
-                group = {"title": title, "kind": group_kind(title), "items": []}
-                target().setdefault("groups", []).append(group)
+            if doc["title"] is None and section is None:
+                doc["title"] = title
+            elif el.size >= major_size:
+                drop_pending()
+                section = {"title": title, "type": section_type(title), "slug": slugify(title)}
+                doc["sections"].append(section)
+                item = group = variant = None
             elif (m := NUMBERED_ITEM_RE.match(title)) and section is not None:
+                drop_pending()
                 item = new_item(int(m.group(1)), m.group(2))
                 section.setdefault("items", []).append(item)
-                group = None
+                group = variant = None
             elif (m := TREND_ITEM_RE.match(title)) and section is not None:
+                drop_pending()
                 item = new_item(int(m.group(2)), m.group(3))
                 section.setdefault("items", []).append(item)
-                group = None
-            elif doc["title"] is None and section is None:
-                doc["title"] = title
+                group = variant = None
+            elif SUBHEAD_RE.search(title) and section is not None:
+                group = {"title": title, "kind": group_kind(title), "items": []}
+                target().setdefault("groups", []).append(group)
+            elif item is not None:
+                drop_pending()
+                pending_caption = title
+                if el.text.rstrip().endswith(":"):
+                    variant = title  # e.g. "Feather Panel:" - names the next "Size:" line
             else:
                 section = {"title": title, "type": section_type(title), "slug": slugify(title)}
                 doc["sections"].append(section)
@@ -272,12 +369,16 @@ def build_structure(stream: list[El]) -> dict:
             if doc["logo"] is None and section is None and not doc["sections"]:
                 doc["logo"] = el.data["src"]
             else:
+                if pending_caption:
+                    el.data["caption"] = parse_caption(pending_caption)
+                    pending_caption = None
                 target().setdefault("images", []).append(el.data)
         elif el.kind == "table":
             last_bullet = None
             target().setdefault("tables", []).append(el.data["rows"])
         last_kind = el.kind
     flush_para()
+    drop_pending()
 
     finalize(doc)
     return doc
@@ -299,6 +400,8 @@ def finalize(node: dict) -> None:
                 items.append({"label": None, "text": sentence(text.rstrip(",;. "))})
             else:
                 label, body = split_label(text)
+                if not label and len(body.split()) <= 9 and ". " not in body:
+                    label, body = body.rstrip(".:;, "), ""  # headline-only highlight
                 body = sentence(body)
                 if body and body[-1] not in ".!?":
                     body += "."
@@ -349,11 +452,11 @@ def extract(pdf_path: Path, out_dir: Path) -> dict:
         old.unlink()
 
     doc = pymupdf.open(pdf_path)
-    body_font = detect_fonts(doc)
+    heading_font = detect_heading_font(doc)
     seen: dict = {}
     stream: list[El] = []
     for i, page in enumerate(doc):
-        stream.extend(page_elements(doc, page, i + 1, body_font, assets, seen))
+        stream.extend(page_elements(doc, page, i + 1, heading_font, assets, seen))
 
     content = build_structure(stream)
     if content["logo"]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import html
 import json
 import math
 import re
@@ -182,19 +183,31 @@ def plan_pages(content: dict, cfg: dict) -> list[dict]:
         p["applications"] = next((g for g in groups if g["kind"] == "applications"), None)
         p["other_groups"] = [g for g in groups if g["kind"] == "other"]
 
+        p["finishes"] = [im["caption"] for im in p.get("images", []) if im.get("caption")]
+
     pages: list[dict] = [{"kind": "cover"}, {"kind": "intro"}]
-    max_side = cfg.get("layout", {}).get("product_page_images", 3)
+    layout = cfg.get("layout", {})
+    split_max = layout.get("split_layout_max_images", 2)
+    first_max = layout.get("finishes_first_page", 6)
+    rest_max = layout.get("finishes_per_page", 9)
     for idx, p in enumerate(products):
         imgs = p.get("images", [])
-        # A gallery page needs at least 3 photos to look intentional; fewer stay on the product page.
-        on_page = len(imgs) if len(imgs) - max_side < 3 else max_side
-        on_page = min(on_page, 5)
-        pages.append({"kind": "product", "product": p, "images": imgs[:on_page],
-                      "flip": idx % 2 == 1})
-        for n, group in enumerate(balanced(imgs[on_page:], 9)):
-            pages.append({"kind": "gallery", "title": p["name"],
-                          "eyebrow": labels.get("product_gallery", "Finishes & Profiles"),
-                          "images": group, "continued": n > 0, "product_number": p["number"]})
+        if len(imgs) <= split_max:
+            # Few photos: photo column beside the text, finish names shown on the photos.
+            pages.append({"kind": "product", "product": p, "images": imgs, "flip": idx % 2 == 1})
+            continue
+        # Many photos: catalogue layout - header with details, then a captioned finish grid.
+        heavy = len(" ".join(p.get("paragraphs", []))) > 250
+        first = min(len(imgs), 4 if heavy else first_max)
+        if 0 < len(imgs) - first < 3:
+            first = len(imgs) - 3 if len(imgs) - 3 >= 3 else first
+        pages.append({"kind": "catalog", "product": p, "images": imgs[:first]})
+        for n, group in enumerate(balanced(imgs[first:], rest_max)):
+            pages.append({"kind": "finishes", "product": p, "images": group,
+                          "eyebrow": labels.get("finishes", "Available Finishes")})
+
+    if products and not (spec_sec and spec_sec.get("table")):
+        pages.append({"kind": "glance", "products": products})
 
     rendered_types = {"products"}
     for s in sections:
@@ -224,11 +237,15 @@ def plan_pages(content: dict, cfg: dict) -> list[dict]:
     for i, page in enumerate(pages, start=1):
         page["number"] = i
     index = [{"number": p["product"]["number"], "name": p["product"]["name"],
-              "subtitle": p["product"]["subtitle"], "page": p["number"]}
-             for p in pages if p["kind"] == "product"]
+              "subtitle": p["product"]["subtitle"], "page": p["number"],
+              "finishes": len(p["product"]["finishes"])}
+             for p in pages if p["kind"] in ("product", "catalog")]
     extras = [{"name": pg.get("section", {}).get("title") or pg.get("title"), "page": pg["number"]}
               for pg in pages if pg["kind"] in ("specs", "trends", "gallery", "generic")
               and pg.get("section") and not pg.get("continued")]
+    extras += [{"name": labels.get("glance", "Collections at a Glance"), "page": pg["number"]}
+               for pg in pages if pg["kind"] == "glance"]
+    extras.sort(key=lambda e: e["page"])
     content["index"] = index
     content["index_extras"] = extras
     return pages
@@ -259,12 +276,15 @@ def render_html(content: dict, pages: list[dict], cfg: dict, out_dir: Path) -> P
         candidates = candidates or all_images(content)
         cover_img = max(candidates, key=lambda im: im["w"] * im["h"])["src"] if candidates else None
 
+    back = cfg.get("back_cover") or {}
     contact_sec = next((s for s in content["sections"] if s["type"] == "contact"), None)
     contact = {
-        "title": contact_sec["title"] if contact_sec else "Get in Touch",
-        "intro": (contact_sec or {}).get("paragraphs", []),
+        "title": contact_sec["title"] if contact_sec else back.get("title", "Get in Touch"),
+        "intro": (contact_sec or {}).get("paragraphs") or ([back["intro"]] if back.get("intro") else []),
         "details": merge_contact(contact_sec, cfg.get("contact")),
     }
+    if not content.get("intro") and cfg.get("intro"):
+        content["intro"] = [cfg["intro"]]
 
     width, height = PAGE_SIZES[cfg.get("page_size", "letter")]
     fonts = (HERE / "fonts").resolve().as_uri()
@@ -273,7 +293,7 @@ def render_html(content: dict, pages: list[dict], cfg: dict, out_dir: Path) -> P
         cover={"title": cover_title, "eyebrow": cover_eyebrow or "",
                "tagline": cover.get("tagline", ""), "image": cover_img},
         contact=contact, year=year,
-        back_image=find_image(content, (cfg.get("back_cover") or {}).get("image")), width=width, height=height, fonts=fonts,
+        back_image=find_image(content, back.get("image")), width=width, height=height, fonts=fonts,
         css=(HERE / "templates" / "brochure.css").read_text(encoding="utf-8"),
     )
     path = out_dir / "brochure.html"
@@ -330,8 +350,22 @@ def main() -> None:
     if args.preview:
         write_previews(pdf_path, out_dir)
 
+    for w in content.get("warnings", []):
+        warn(w)
     products = next((s.get("items", []) for s in content["sections"] if s["type"] == "products"), [])
+    html_text = html.unescape(re.sub(r"<[^>]+>", " ", html_path.read_text(encoding="utf-8")))
+    html_text = re.sub(r"\s+", " ", html_text)
+    total = 0
+    for p in products:
+        for f in p.get("finishes", []):
+            total += 1
+            if f["name"] not in html_text or (f["tone"] and f["tone"] not in html_text):
+                warn(f"Finish name '{f['text']}' ({p['name']}) is missing from the brochure")
+        uncaptioned = sum(1 for im in p.get("images", []) if not im.get("caption"))
+        if uncaptioned and p.get("finishes"):
+            warn(f"{p['name']}: {uncaptioned} photo(s) have no finish name above them in the raw file")
     print(f"Products  {len(products)}: " + ", ".join(p["name"] for p in products))
+    print(f"Finishes  {total} named finishes, all checked against the rendered brochure")
     print(f"Sections  " + ", ".join(f"{s['title']} [{s['type']}]" for s in content["sections"]))
     print(f"Pages     {len(pages)}")
     print(f"Wrote     {pdf_path.relative_to(ROOT)}")
